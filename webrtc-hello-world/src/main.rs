@@ -56,10 +56,21 @@ async fn connect(
 		},
 	));
 
+	let client_id = body.id;
+	let clients_state = clients.clone();
 	peer_connection.on_ice_connection_state_change(Box::new(
-		|connection_state: RTCIceConnectionState| {
-			println!("ICE Connection State has changed: {}", connection_state);
-			Box::pin(async {})
+		move |connection_state: RTCIceConnectionState| {
+			println!("ICE Connection State has changed: {}", &connection_state);
+			let clients_state_2 = clients_state.clone();
+			Box::pin(async move {
+				match connection_state {
+					RTCIceConnectionState::Disconnected => {
+						let mut connections = clients_state_2.connections.write().await;
+						(*connections).remove(&client_id);
+					},
+					_ => println!("No action"),
+				};
+			})
 		},
 	));
 

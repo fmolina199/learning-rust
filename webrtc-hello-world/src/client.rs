@@ -91,7 +91,7 @@ async fn main() {
 
 	let payload = match peer_connection.local_description().await {
 		Some(local_desc) => ConnectRequest {
-			id: 11,
+			id: rand::random::<u64>(),
 			webrtc_config: local_desc
 		},
 		None => panic!("generate local_description failed!"),
@@ -120,5 +120,5 @@ async fn main() {
 		panic!("{}", err);
 	}
 
-	sleep(Duration::from_secs(30)).await;
+	sleep(Duration::from_secs(300)).await;
 }
