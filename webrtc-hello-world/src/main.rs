@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
-use tokio::time::{Duration, sleep};
 use webrtc::api::{API, APIBuilder};
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::MediaEngine;
@@ -34,13 +33,28 @@ pub struct Connection {
 	id: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Chunk {
+	map: [i32; 16],
+	position: [i32; 3],
+}
+
+impl Chunk {
+	fn new() -> Chunk {
+		Chunk {
+			map: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+			position: [0, 0, 0],
+		}
+	}
+}
+
 #[post("/connect")]
 async fn connect(
 	api: web::Data<API>,
 	clients: web::Data<WebRtcClients>,
 	body: web::Json<ConnectRequest>
 ) -> impl Responder {
-	log::info!("connect: {:?}", body);
+	log::info!("connect request: {:?}", body);
 
 	// Create peer_connection
 	let peer_connection = match api.new_peer_connection(RTCConfiguration::default()).await {
@@ -51,7 +65,7 @@ async fn connect(
 
 	peer_connection.on_peer_connection_state_change(Box::new(
 		|connection_state: RTCPeerConnectionState| {
-			println!("Peer Connection State has changed: {}", connection_state);
+			log::info!("Peer Connection State has changed: {}", connection_state);
 			Box::pin(async {})
 		},
 	));
@@ -60,7 +74,7 @@ async fn connect(
 	let clients_state = clients.clone();
 	peer_connection.on_ice_connection_state_change(Box::new(
 		move |connection_state: RTCIceConnectionState| {
-			println!("ICE Connection State has changed: {}", &connection_state);
+			log::info!("ICE Connection State has changed: {}", &connection_state);
 			let clients_state_2 = clients_state.clone();
 			Box::pin(async move {
 				match connection_state {
@@ -68,40 +82,40 @@ async fn connect(
 						let mut connections = clients_state_2.connections.write().await;
 						(*connections).remove(&client_id);
 					},
-					_ => println!("No action"),
+					_ => log::info!("No action"),
 				};
 			})
 		},
 	));
 
-    // TODO START - REMOVE: JUST FOR TEST
-	peer_connection.on_data_channel(Box::new(|data_channel: Arc<RTCDataChannel>| {
-		Box::pin(async move {
-			let data_channel_copy = Arc::clone(&data_channel);
-			data_channel.on_open(Box::new(move || {
-				Box::pin(async move {
-					while data_channel_copy
-						.send_text(format!("{:?}", tokio::time::Instant::now()))
-						.await
-						.is_ok()
-					{
-						sleep(Duration::from_secs(3)).await;
-					}
-				})
-			}));
+	peer_connection.on_data_channel(Box::new(
+		move |data_channel: Arc<RTCDataChannel>| {
+			log::info!("New Datachannel from user {}: {}", &client_id, &data_channel.label());
 
-			let d_label = data_channel.label().to_owned();
-			data_channel.on_message(Box::new(move |msg: DataChannelMessage| {
-				let msg_str = String::from_utf8(msg.data.to_vec()).unwrap();
-				println!("Message from DataChannel '{}': '{}'", d_label, msg_str);
-				Box::pin(async {})
-			}));
-		})
-	}));
-	// TODO END - REMOVE: JUST FOR TEST
+			// Create message handler
+			let dc_copy = data_channel.clone();
+			data_channel.on_message(Box::new(
+				move |msg: DataChannelMessage| {
+					let msg_str = String::from_utf8(msg.data.to_vec()).unwrap();
+					log::info!("Message from DataChannel '{}': '{}'", &dc_copy.label(), msg_str);
 
-	// Create data_channel
-	// TODO
+					let dc_reply = dc_copy.clone();
+					Box::pin(async move {
+						let chunk = Chunk::new();
+						let payload = match serde_json::to_string(&chunk) {
+							Ok(p) => p,
+							Err(e) => panic!("{}", e),
+						};
+						if let Err(e) = dc_reply.send_text(payload).await {
+							panic!("{}", e);
+						}
+					})
+				}
+			));
+
+			Box::pin(async move {})
+		},
+	));
 
 	// Connect to peer
 	if let Err(err) = peer_connection.set_remote_description(body.webrtc_config.clone()).await {
@@ -154,7 +168,6 @@ async fn get_clients(clients: web::Data<WebRtcClients>) -> impl Responder {
 	let connections_json = serde_json::to_string(&connections_vec).unwrap();
 	HttpResponse::Ok().body(connections_json)
 }
-
 
 async fn create_webrtc_app() -> API {
 	let mut m = MediaEngine::default();

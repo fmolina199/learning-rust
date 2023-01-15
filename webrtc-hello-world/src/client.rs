@@ -1,7 +1,7 @@
 use awc::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::time::{Duration, sleep};
+use tokio::time::{Duration, Instant, sleep};
 use webrtc::api::APIBuilder;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::MediaEngine;
@@ -20,6 +20,8 @@ pub struct ConnectRequest {
 
 #[actix_rt::main]
 async fn main() {
+	env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+
 	// Create WebRTC API
 	let mut m = MediaEngine::default();
 	m.register_default_codecs().unwrap();
@@ -41,14 +43,14 @@ async fn main() {
 
 	peer_connection.on_peer_connection_state_change(Box::new(
 		|connection_state: RTCPeerConnectionState| {
-			println!("Peer Connection State has changed: {}", connection_state);
+			log::info!("Peer Connection State has changed: {}", connection_state);
 			Box::pin(async {})
 		},
 	));
 
 	peer_connection.on_ice_connection_state_change(Box::new(
 		|connection_state: RTCIceConnectionState| {
-			println!("ICE Connection State has changed: {}", connection_state);
+			log::info!("ICE Connection State has changed: {}", connection_state);
 			Box::pin(async {})
 		},
 	));
@@ -58,11 +60,21 @@ async fn main() {
 		Err(err) => panic!("{}", err),
 	};
 
-	let data_channel_on_open = Arc::clone(&data_channel);
+	let dc_copy = Arc::clone(&data_channel);
 	data_channel.on_open(Box::new(
 		move || {
-			println!("Data channel '{}'-'{}'", data_channel_on_open.label(), data_channel_on_open.id());
-			Box::pin(async {})
+			log::info!("Data channel '{}'-'{}'", &dc_copy.label(), &dc_copy.id());
+			let dc_send = dc_copy.clone();
+			Box::pin(async move {
+				log::info!("Sending Message");
+				while dc_send
+					.send_text(format!("{:?}", Instant::now()))
+					.await
+					.is_ok()
+				{
+					sleep(Duration::from_secs(3)).await;
+				}
+			})
 		}
 	));
 
@@ -70,7 +82,7 @@ async fn main() {
 	data_channel.on_message(Box::new(
 		move |msg: DataChannelMessage| {
 			let msg_str = String::from_utf8(msg.data.to_vec()).unwrap();
-			println!("Message from DataChannel '{}': '{}'", d_label, msg_str);
+			log::info!("Message from DataChannel '{}': '{}'", d_label, msg_str);
 			Box::pin(async {})
 		}
 	));
@@ -109,7 +121,7 @@ async fn main() {
 		Err(err) => panic!("{}", err),
 	};
 
-	println!("Response: {:?}", res);
+	log::info!("Response: {:?}", res);
 
 	let val = match res.json::<RTCSessionDescription>().await {
 		Ok(val) => val,
