@@ -36,3 +36,9 @@ path = "src/client.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "actix-runtime"
+path = "src/actix_runtime.rs"
+test = false
+bench = false
+
