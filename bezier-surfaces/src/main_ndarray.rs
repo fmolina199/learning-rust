@@ -1,17 +1,17 @@
-use nalgebra::{matrix, vector, Vector3, Rotation3};
+use ndarray::{array, Array1, Array2};
 use speedy2d::color::Color;
 use speedy2d::window::{WindowHandler, WindowHelper};
 use speedy2d::{Graphics2D, Window};
-use std::ops::Mul;
+use std::thread;
 
 struct Const {
-	barycentric: Vec<[f32; 3]>,
+	barycentric: Array2<f32>,
 }
 
 impl Const {
 	fn new() -> Const {
 		Const {
-			barycentric: vec![
+			barycentric: array![
 				[0.0, 0.0, 1.0],
 				[0.0, 0.1, 0.9],
 				[0.0, 0.2, 0.8],
@@ -82,7 +82,7 @@ impl Const {
 		}
 	}
 
-	fn get_barycentric(&self) -> &Vec<[f32; 3]> {
+	fn get_barycentric(&self) -> &Array2<f32> {
 		&self.barycentric
 	}
 }
@@ -103,23 +103,24 @@ impl SingConst {
 static mut BARYCENTRIC: SingConst = SingConst { singleton: None };
 
 struct MyWindowHandler {
-	triangle: Vec<Vector3<f32>>,
+	triangle: Vec<Array1<f32>>,
 }
 
 impl WindowHandler for MyWindowHandler {
 	fn on_draw(&mut self, helper: &mut WindowHelper, graphics: &mut Graphics2D) {
 		graphics.clear_screen(Color::from_rgb(1.0, 1.0, 1.0));
 		let b = unsafe { BARYCENTRIC.get_instance().get_barycentric() };
-		for i in b {
-			let s_1 = i[0];
+		let shape = b.shape();
+		for i in 0..shape[0] {
+			let s_1 = b[[i, 0]];
 			let s_2 = s_1 * s_1;
 			let s_3 = s_2 * s_1;
 
-			let t_1 = i[1];
+			let t_1 = b[[i, 1]];
 			let t_2 = t_1 * t_1;
 			let t_3 = t_2 * t_1;
 
-			let u_1 = i[2];
+			let u_1 = b[[i, 2]];
 			let u_2 = u_1 * u_1;
 			let u_3 = u_2 * u_1;
 
@@ -142,36 +143,32 @@ impl WindowHandler for MyWindowHandler {
 }
 
 fn main() {
-	let a = matrix![
-		1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
-		0.500, 0.500, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
-		0.250, 0.500, 0.250, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
-		0.125, 0.375, 0.375, 0.125, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
-		0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000;
-		0.000, 0.000, 0.000, 0.000, 0.500, 0.500, 0.000, 0.000, 0.000, 0.000;
-		0.000, 0.000, 0.000, 0.000, 0.250, 0.500, 0.250, 0.000, 0.000, 0.000;
-		0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000;
-		0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.500, 0.500, 0.000;
-		0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000;
+	let a = array![
+		[1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000],
+		[0.500, 0.500, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000],
+		[0.250, 0.500, 0.250, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000],
+		[0.125, 0.375, 0.375, 0.125, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000],
+		[0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000],
+		[0.000, 0.000, 0.000, 0.000, 0.500, 0.500, 0.000, 0.000, 0.000, 0.000],
+		[0.000, 0.000, 0.000, 0.000, 0.250, 0.500, 0.250, 0.000, 0.000, 0.000],
+		[0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000],
+		[0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.500, 0.500, 0.000],
+		[0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000]
 	];
-
-	let b = vec![
-		vector![00.0, 00.0, 00.0];
-		vector![00.0, 05.0, 00.0];
-		vector![00.0, 10.0, 00.0];
-		vector![00.0, 15.0, 00.0];
-		vector![05.0, 00.0, 00.0];
-		vector![07.5, 07.5, 150.0];
-		vector![05.0, 10.0, 00.0];
-		vector![10.0, 00.0, 00.0];
-		vector![10.0, 05.0, 00.0];
-		vector![15.0, 00.0, 00.0];
-	];
-
-	let b = a.dot(&b);
 
 	let window = Window::new_centered("Title", (1000, 1000)).unwrap();
 	window.run_loop(MyWindowHandler {
-		triangle: b,
+		triangle: vec![
+			array![00.0, 00.0, 00.0],
+			array![00.0, 05.0, 00.0],
+			array![00.0, 10.0, 00.0],
+			array![00.0, 15.0, 00.0],
+			array![05.0, 00.0, 00.0],
+			array![07.5, 07.5, 150.0],
+			array![05.0, 10.0, 00.0],
+			array![10.0, 00.0, 00.0],
+			array![10.0, 05.0, 00.0],
+			array![15.0, 00.0, 00.0],
+		],
 	});
 }
